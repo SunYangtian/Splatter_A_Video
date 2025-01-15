@@ -18,7 +18,7 @@ Install [pytorch3d](https://github.com/facebookresearch/pytorch3d).
 
 
 ## Data preparation
-Please follow this [instruction]((src/data_preparation/README.md)).
+Please follow this [instruction](./data_preparation/README.md).
 
 
 ## Training
