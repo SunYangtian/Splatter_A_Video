@@ -25,8 +25,8 @@ python compute_depth.py --img_dir $data_root$/images --out_raw_dir $data_root$/d
 The initialized point flow should look like
 <table>
   <tr>
-    <td><img src="../imgs/video.gif" alt="video" width="300"></td>
-    <td><img src="../imgs/point_render.gif" alt="point" width="300"></td>
+    <td><img src="../../imgs/video.gif" alt="video" width="300"></td>
+    <td><img src="../../imgs/point_render.gif" alt="point" width="300"></td>
   </tr>
 </table>
 
