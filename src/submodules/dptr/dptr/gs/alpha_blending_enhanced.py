@@ -1,0 +1,160 @@
+import torch
+from torch import Tensor
+from jaxtyping import Float
+import dptr.gs._C as _C
+
+
+def alpha_blending_enhanced(
+    uv: Float[Tensor, "P 2"],
+    conic: Float[Tensor, "P 2"],
+    opacity: Float[Tensor, "P 1"],
+    feature: Float[Tensor, "P C"],
+    idx_sorted: Float[Tensor, "Nid"],
+    title_bins: Float[Tensor, "Ntile 2"],
+    bg: float,
+    W: int,
+    H: int,
+    ndc: Float[Tensor, "P 2"]=None,
+    abs_ndc: Float[Tensor, "P 2"]=None,
+    K: int=10,
+    enable_truncation: bool=False
+) -> Float[Tensor, "C H W"]:
+    """
+    Alpha Blending for sorted 2D planar Gaussian in a tile based manner.
+
+    Parameters
+    ----------
+    uv : Float[Tensor, "P 2"]
+        2D positions for each point in the image.
+    conic : Float[Tensor, "P 2"]
+        Inverse 2D covariances for each point in the image.
+    opacity : Float[Tensor, "P 1"]
+        Opacity values for each point.
+    feature : Float[Tensor, "P C"]
+        Features for each point to be alpha blended.
+    idx_sorted : Float[Tensor, "Nid"]
+        Indices of Gaussian points sorted according to [tile_id|depth].
+    title_bins : Float[Tensor, "Ntile 2"]
+        Range of indices in idx_sorted for Gaussians participating in alpha blending in each tile.
+    bg : float
+        Background color.
+    W : int
+        Width of the image.
+    H : int
+        Height of the image.
+    ndc: Float[Tensor, "P 2"]
+        Just for storing the gradients of NDC coordinates for adaptive density control, by default None
+    abs_ndc: Float[Tensor, "P 2"]
+        Just for storing the ABSOLUTE gradients of NDC coordinates for adaptive density control, by default None
+    K: int
+        Number of Gaussians to be considered for each pixel, by default 10
+
+    Returns
+    -------
+    feature_map : Float[Tensor, "C H W"]
+        Rendered feature maps.
+    ncontrib: Float[Tensor, "H W"]
+        Number of contributing Gaussians for each pixel
+    gs_idx: Float[Tensor, "H W K"]
+        First K gaussian index of each pixel
+    
+    """
+
+    return _AlphaBlending.apply(
+        uv, conic, opacity, feature, idx_sorted, title_bins, bg, W, H, ndc, abs_ndc, K, enable_truncation
+    )
+
+
+class _AlphaBlending(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, uv, conic, opacity, feature, idx_sorted, tile_range, bg, W, H, ndc, abs_ndc, K, enable_truncation):
+        (render_feature, final_T, ncontrib, gs_idx) = _C.alpha_blending_forward_enhanced(
+            uv, conic, opacity, feature, idx_sorted, tile_range, bg, W, H, K, enable_truncation
+        )
+
+        ctx.W = W
+        ctx.H = H
+        ctx.bg = bg
+        ctx.ndc = ndc
+        ctx.abs_ndc = abs_ndc
+        
+        ctx.save_for_backward(
+            uv, conic, opacity, feature, idx_sorted, tile_range, final_T, ncontrib
+        )
+
+        return render_feature, ncontrib, gs_idx
+
+    @staticmethod
+    def backward(ctx, dL_drendered, _, __):
+        W = ctx.W
+        H = ctx.H
+        bg = ctx.bg
+        ndc = ctx.ndc
+        abs_ndc = ctx.abs_ndc
+
+        (
+            uv,
+            conic,
+            opacity,
+            feature,
+            idx_sorted,
+            tile_range,
+            final_T,
+            ncontrib,
+        ) = ctx.saved_tensors
+
+        (dL_duv, dL_dconic, dL_dopacity, dL_dfeature, dL_dabs_uv) = _C.alpha_blending_backward_enhanced(
+            uv,
+            conic,
+            opacity,
+            feature,
+            idx_sorted,
+            tile_range,
+            bg,
+            W,
+            H,
+            final_T,
+            ncontrib,
+            dL_drendered,
+        )
+        
+        dL_dndc = None
+        if ndc is not None:
+            duv_dndc = torch.tensor([0.5 * W, 0.5 * H], dtype=uv.dtype, device=uv.device)
+            dL_dndc = dL_duv * duv_dndc[None, ...]
+
+        dL_dabs_ndc = None
+        if abs_ndc is not None:
+            dabs_uv_dabs_ndc = torch.tensor([0.5 * W, 0.5 * H], dtype=uv.dtype, device=uv.device)
+            dL_dabs_ndc = dL_dabs_uv * dabs_uv_dabs_ndc[None, ...]
+
+        grads = (
+            # grads w.r.t uv
+            dL_duv,
+            # grads w.r. conic,
+            dL_dconic,
+            # grads w.r. opacity,
+            dL_dopacity,
+            # grads w.r. feature,
+            dL_dfeature,
+            # grads w.r. idx_sorted,
+            None,
+            # grads w.r. tile_range,
+            None,
+            # grads w.r. bg,
+            None,
+            # grads w.r. W,
+            None,
+            # grads w.r. H
+            None,
+            # grads w.r. ndc
+            dL_dndc,
+            # abs grads w.r. ndc
+            dL_dabs_ndc,
+            # grads w.r. K
+            None,
+            # grads w.r. enable_truncation
+            None
+        )
+
+        return grads

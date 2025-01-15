@@ -1,0 +1,31 @@
+expname = exp
+dataset_types = simpleGS
+gui = False
+data_dir = /mnt/sda/syt/dataset/DAVIS_processed
+
+# training
+num_pairs = 1
+num_pts = 256
+use_affine = True
+use_error_map = True
+use_count_map = True
+i_img = 100
+base_idx = 0
+num_imgs = -1
+i_weight = 5000
+num_workers = 4
+num_iters = 20000
+
+
+loss_rgb_weight = 10.0
+loss_flow_weight = 2.0
+video_flow_margin = 0.3
+
+gs_config_file = configs/frag_gs_v10.yaml
+load_opt = 0
+load_scheduler = 0
+save_dir = "out"
+
+# inference
+use_max_loc = True
+vis_occlusion = True

@@ -1,0 +1,118 @@
+name: "gs_debug"
+
+trainer:
+  output_path: "gs_debug"
+  max_steps: 20000
+  val_interval: 500
+
+  model:
+    name: FragModel
+    lambda_dssim: 0.2
+    point_cloud:
+      point_cloud_type: "DeltaGaussianPointCloud"
+      max_sh_degree: 3
+      trainable: true
+      unwarp_prefix: "point_cloud"
+      initializer:
+        init_type: 'positive_Z_random'
+        num_points: 100000
+        feat_dim: 3
+        radius: 1.0
+
+  optimizer:
+    optimizer_1:
+      type: AtlasGaussianSplattingOptimizer
+      name: Adam
+      args:
+        eps: 1e-15
+      extra_cfg:
+        control_module: "point_cloud" # the variable name that need to be densification
+        percent_dense: 0.001
+        split_num: 2
+        densify_start_iter: 500
+        densify_stop_iter: 100000
+        prune_interval: 100
+        duplicate_interval: 100
+        opacity_reset_interval: 3000
+        densify_grad_threshold: 0.0002
+        # min_opacity: 0.011
+        min_opacity: 0.05
+      params:
+        point_cloud.position:
+          lr: 0.00006
+        point_cloud.pos_cubic_node:
+          lr: 0.00006
+        point_cloud.features:
+          lr: 0.0025
+        point_cloud.features_rest:
+          lr: 0.000125 # features/20
+        point_cloud.scaling:
+          lr: 0.005
+        point_cloud.rotation:
+          lr: 0.001
+        point_cloud.opacity:
+          lr: 0.05
+        point_cloud.pos_poly_feat:
+          lr: 0.001
+        point_cloud.pos_fourier_feat:
+          lr: 0.00006
+        point_cloud.rot_poly_feat:
+          lr: 0.001
+        point_cloud.rot_fourier_feat:
+          lr: 0.001
+        point_cloud.mask_attribute:
+          lr: 0.001
+        point_cloud.dino_attribute:
+          lr: 0.001
+
+  scheduler:
+    name: "ExponLRScheduler"
+    max_steps: ${trainer.max_steps}
+    params:
+      point_cloud.position:
+        init:  0.00006
+        final: 0.0000016
+      point_cloud.pos_cubic_node:
+        init:  0.00006
+        final: 0.0000016
+      point_cloud.pos_poly_feat:
+        init:  0.001
+        final: 0.00001
+      point_cloud.pos_fourier_feat:
+        init:  0.00006
+        final: 0.0000016
+      point_cloud.rot_poly_feat:
+        init:  0.001
+        final: 0.00001
+      point_cloud.rot_fourier_feat:
+        init:  0.001
+        final: 0.00001
+  dataset:
+    data_path: ""
+    data_type: "FixCameraReFormat"
+    cached_image: True
+    shuffle: True
+    batch_size: 1
+    num_workers: 0
+    scale: 1.0
+    white_bg: False
+
+  renderer:
+    # name: "DPTRRender"
+    # name: "DPTROrthoRender"
+    name: "DPTROrthoEnhancedRender"
+    max_sh_degree: ${trainer.model.point_cloud.max_sh_degree}
+    densify_abs_grad_enable: False
+  writer:
+    writer_type: "TensorboardWriter"
+  
+  hooks:
+    LogHook:
+      name: LogHook
+    CheckPointHook:
+      name: CheckPointHook
+
+  render_attributes:
+    mask_attribute: 1
+    pos_poly_feat: 3
+    dino_attribute: 3
